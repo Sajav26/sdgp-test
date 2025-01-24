@@ -141,33 +141,40 @@ export const verifyPin = async (req, res) => {
     }
 };
 
-export const login = async (req, res) => {
-    const { email, password } = req.body;
+export const login = async (res,req) => {
+    const {email, name, password} = req.body;
 
-    try {
-        if (!email || !password) {
-            return res.status(400).json({ message: "Email and password are required" });
+    try{
+        // ! Ensure atleast one idtifier and password provided
+        if((!email && !password) || !password){
+            return res.status(400).json({message: "Email or name and password are required"});
         }
 
-        
-        const user = await User.findOne({ email });
-        if (!user) {
-            return res.status(400).json({ message: "User does not exist" });
+        // * Find the user by email or name
+        const user = await User.findOne({
+            $or: [{email},{name}]
+        });
+
+        if(!user){
+            return req.status(400).json({message: "User does not exist"});
         }
 
-        if (!user.isVerified) {
-            return res.status(400).json({ message: "Email not verified" });
+        // ! Check if the user is verified
+        if(!user.isVerified){
+            return res.status(400).json({message: "Email not verified"});
         }
-        
+
+        // TODO: Verify the password
         const isPasswordCorrect = await bcrypt.compare(password, user.password);
-        if (!isPasswordCorrect) {
-            return res.status(400).json({ message: "Invalid credentials" });
+        if(!isPasswordCorrect){
+            return res.status(400).json({message: "Invalid credentials"});
         }
 
+        // * Generate a token
         const token = jwt.sign(
-            { id: user._id, userType: user.userType },
-            process.env.SECERT_KEY,
-            { expiresIn: '1h' }
+            {id: user._id, userType: user.userType},
+            process.env.SERCERT_KEY,
+            {expiresIn: '1h'}
         );
 
         res.status(200).json({
@@ -175,8 +182,7 @@ export const login = async (req, res) => {
             userType: user.userType,
             token
         });
-    } catch (err) {
-        console.error("Login error:", err);
-        res.status(500).json({ message: "[ERROR]: Something went wrong" });
+    }catch(err){
+        res.status(500).json({message: "[ERROR]: Something went wrong"});
     }
 };
