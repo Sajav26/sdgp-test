@@ -99,7 +99,7 @@ export const signup = async (req, res) => {
 
         await transporter.sendMail(mailOptions);
 
-        res.status(201).json({message: "User created successfully. Check your email for verification"});
+        res.status(201).json({message: `${userType} created successfully. Check your email for verification`});
     } catch(err){
         res.status(500).json({message: "[ERROR]: Something went wrong"});
     }
@@ -127,48 +127,47 @@ export const verifyPin = async (req, res) => {
     }
 };
 
-export const login = async (res,req) => {
-    const {email, name, password} = req.body;
+export const login = async (req, res) => {
+    try {
+        const { email, name, password } = req.body;
 
-    try{
-        // ! Ensure atleast one idtifier and password provided
-        if((!email && !password) || !password){
-            return res.status(400).json({message: "Email or name and password are required"});
+        if (!email && !name) {
+            return res.status(400).json({ message: "Email or name is required" });
+        }
+        if (!password) {
+            return res.status(400).json({ message: "Password is required" });
         }
 
-        // * Find the user by email or name
         const user = await User.findOne({
-            $or: [{email},{name}]
+            $or: [{ email }, { name }],
         });
 
-        if(!user){
-            return req.status(400).json({message: "User does not exist"});
+        if (!user) {
+            return res.status(400).json({ message: "User does not exist" });
         }
 
-        // ! Check if the user is verified
-        if(!user.isVerified){
-            return res.status(400).json({message: "Email not verified"});
+        if (!user.isVerified) {
+            return res.status(400).json({ message: "Email not verified" });
         }
 
-        // TODO: Verify the password
         const isPasswordCorrect = await bcrypt.compare(password, user.password);
-        if(!isPasswordCorrect){
-            return res.status(400).json({message: "Invalid credentials"});
+        if (!isPasswordCorrect) {
+            return res.status(400).json({ message: "Invalid credentials" });
         }
 
-        // * Generate a token
         const token = jwt.sign(
-            {id: user._id, userType: user.userType},
-            process.env.SERCERT_KEY,
-            {expiresIn: '1h'}
+            { id: user._id, userType: user.userType },
+            process.env.SECRET_KEY,
+            { expiresIn: '1h' }
         );
 
         res.status(200).json({
             message: "Login successful",
             userType: user.userType,
-            token
+            token,
         });
-    }catch(err){
-        res.status(500).json({message: "[ERROR]: Something went wrong"});
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: "[ERROR]: Something went wrong" });
     }
 };
