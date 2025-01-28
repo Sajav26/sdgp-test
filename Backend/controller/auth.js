@@ -1,95 +1,81 @@
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
-import nodemailer from 'nodemailer';
-import User from '../models/User.js';
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+import nodemailer from "nodemailer";
+import User from "../models/User.js";
 
+// Helper function to generate a random 4-digit PIN
 const generatePin = () => Math.floor(1000 + Math.random() * 9000);
 
 // * Signup function
 export const signup = async (req, res) => {
-    const { name, email, password, userType, adminId, registrationNumber, organiztionType} = req.body;
+    const { name, email, password, userType, registrationNumber, organizationType } = req.body;
 
-    // ! Ensure all fields are provided
-    if(!['individual', 'organization', 'admin'].includes(userType)){
-        return res.status(400).json({message: "Invalid user type"});
+    // Validation for required fields
+    if (!name || !email || !password || !userType) {
+        return res.status(400).json({ message: "All fields are required" });
     }
 
-    if(userType == 'organization' && !['donor', 'recipient'].includes(organiztionType)){
-        return res.status(400).json({message: "Invaild organization type. Must be 'donor' or 'recipient'"});
+    // Validate user type
+    const validUserTypes = ["individual", "organization", "admin"];
+    if (!validUserTypes.includes(userType)) {
+        return res.status(400).json({ message: "Invalid user type" });
     }
 
-    try{
-        // * Check if the user already exists
-        const existingUser = await User.findOne({email});
-        if(existingUser){
-            return res.status(400).json({message: "User already exists"});
+    // Validate organization type
+    if (userType === "organization") {
+        if (!["donor", "recipient"].includes(organizationType)) {
+            return res.status(400).json({ message: "Invalid organization type. Must be 'donor' or 'recipient'." });
+        }
+        if (!registrationNumber) {
+            return res.status(400).json({ message: "Registration number is required for organizations." });
+        }
+    }
+
+    try {
+        // Check if user already exists
+        const existingUser = await User.findOne({ email });
+        if (existingUser) {
+            return res.status(400).json({ message: "User already exists" });
         }
 
-        // TODO: validate adminId for admin users
-        if(userType === 'admin'&& !adminId){
-            return res.status(400).json({message: "Admin ID is required for admin users"});
-        }
-
-        // TODO: Validate registrationNumber for organization users
-        if(userType === 'organization' && !registrationNumber){
-            return res.status(400).json({message: "Registration number is required for organization users"});
-        }
-
-        // * Hash the password
+        // Hash the password
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        // * Generate a verification pin
+        // Generate verification PIN
         const verificationPin = generatePin();
 
-        // * Create the user
+        // Create user
         const newUser = new User({
             name,
             email,
             password: hashedPassword,
             userType,
             verificationPin,
-            adminId: userType === 'admin' ? adminId: undefined,
-            registrationNumber: userType === 'organization' ? registrationNumber: undefined,
-            organizationType: userType === 'organization' ? organiztionType: undefined
+            registrationNumber: userType === "organization" ? registrationNumber : undefined,
+            organizationType: userType === "organization" ? organizationType : undefined,
         });
 
+        // Save the user
         await newUser.save();
 
-        // * Prepare the email
-        let subject, htmlContent;
-
-        if (userType === 'individual') {
-            subject = "Don't reply: Verify Your Email (Individual)";
-            htmlContent = `
-                <h2>Your verification PIN is:</h2>
-                <p>${verificationPin}</p>
-                <p>Enter this PIN to verify your email for your Individual account.</p>
-            `;
-        } else if (userType === 'organization') {
-            subject = `Don't reply: Verify Your Email (${organizationType === 'donor' ? 'Donor' : 'Recipient'})`;
-            htmlContent = `
-                <h2>Your verification PIN is:</h2>
-                <p>${verificationPin}</p>
-                <p>Enter this PIN to verify your email for your ${organizationType === 'donor' ? 'Donor' : 'Recipient'} account.</p>
-            `;
-        } else if (userType === 'admin') {
-            subject = "Don't reply: Verify Your Email (Admin)";
-            htmlContent = `
-                <h2>Your verification PIN is:</h2>
-                <p>${verificationPin}</p>
-                <p>Enter this PIN to verify your email for Admin registration.</p>
-            `;
-        }
-
-        // * Send verification email
+        // Email setup
         const transporter = nodemailer.createTransport({
-            service: 'gmail',
-            auth:{
+            service: "gmail",
+            auth: {
                 user: process.env.USER_EMAIL,
                 pass: process.env.USER_PASSWORD,
             },
         });
 
+        // Email content
+        const subject = `Don't reply: Verify Your Email (${userType})`;
+        const htmlContent = `
+            <h2>Your verification PIN is:</h2>
+            <p>${verificationPin}</p>
+            <p>Enter this PIN to verify your email for ${userType} registration.</p>
+        `;
+
+        // Send email
         const mailOptions = {
             from: process.env.USER_EMAIL,
             to: email,
@@ -99,75 +85,78 @@ export const signup = async (req, res) => {
 
         await transporter.sendMail(mailOptions);
 
-        res.status(201).json({message: `${userType} created successfully. Check your email for verification`});
-    } catch(err){
-        res.status(500).json({message: "[ERROR]: Something went wrong"});
+        // Success response
+        res.status(201).json({ message: `${userType} created successfully. Check your email for verification.` });
+    } catch (err) {
+        console.error("[SIGNUP ERROR]:", err);
+        res.status(500).json({ message: "[ERROR]: Registration failed." });
     }
 };
 
+// * Verify PIN function
 export const verifyPin = async (req, res) => {
     const { email, pin } = req.body;
+
     try {
         const user = await User.findOne({ email });
         if (!user) {
-            return res.status(400).json({ message: "User does not exist" });
+            return res.status(400).json({ message: "User does not exist." });
         }
 
         if (user.verificationPin !== pin) {
-            return res.status(400).json({ message: "Invalid PIN" });
+            return res.status(400).json({ message: "Invalid PIN." });
         }
 
         user.isVerified = true;
         user.verificationPin = null;
         await user.save();
 
-        res.status(200).json({ message: "Email verified successfully" });
+        res.status(200).json({ message: "Email verified successfully." });
     } catch (err) {
-        res.status(500).json({ message: "[ERROR]: Something went wrong" });
+        console.error("[VERIFY PIN ERROR]:", err);
+        res.status(500).json({ message: "[ERROR]: Verification failed." });
     }
 };
 
+// * Login function
 export const login = async (req, res) => {
+    const { email, name, password } = req.body;
+
+    if (!email && !name) {
+        return res.status(400).json({ message: "Email or name is required." });
+    }
+    if (!password) {
+        return res.status(400).json({ message: "Password is required." });
+    }
+
     try {
-        const { email, name, password } = req.body;
-
-        if (!email && !name) {
-            return res.status(400).json({ message: "Email or name is required" });
-        }
-        if (!password) {
-            return res.status(400).json({ message: "Password is required" });
-        }
-
-        const user = await User.findOne({
-            $or: [{ email }, { name }],
-        });
-
+        const user = await User.findOne({ $or: [{ email }, { name }] });
         if (!user) {
-            return res.status(400).json({ message: "User does not exist" });
+            return res.status(400).json({ message: "User does not exist." });
         }
 
         if (!user.isVerified) {
-            return res.status(400).json({ message: "Email not verified" });
+            return res.status(400).json({ message: "Email not verified." });
         }
 
         const isPasswordCorrect = await bcrypt.compare(password, user.password);
         if (!isPasswordCorrect) {
-            return res.status(400).json({ message: "Invalid credentials" });
+            return res.status(400).json({ message: "Invalid credentials." });
         }
 
         const token = jwt.sign(
             { id: user._id, userType: user.userType },
             process.env.SECRET_KEY,
-            { expiresIn: '1h' }
+            { expiresIn: "1h" }
         );
 
         res.status(200).json({
-            message: "Login successful",
+            message: "Login successful.",
             userType: user.userType,
             token,
         });
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: "[ERROR]: Something went wrong" });
+        console.error("[LOGIN ERROR]:", err);
+        res.status(500).json({ message: "[ERROR]: Login failed." });
     }
 };
