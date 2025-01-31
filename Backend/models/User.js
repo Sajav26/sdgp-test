@@ -61,7 +61,7 @@ const userSchema = new mongoose.Schema({
 });
 
 function generateAdminId(){
-    return 1001 + Math.floor(Math.random() * 9000);
+    return Math.floor(Math.random() * 9000);
 }
 
 export default mongoose.model("User", userSchema);
