@@ -2,6 +2,7 @@ import express from 'express';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import authRoutes from './routes/auth.js';
+import endUserRoutes from './routes/enduser.js';
 
 const app = express();
 dotenv.config();
@@ -22,6 +23,7 @@ mongoose.connection.on("disconnection", ()=>{
 app.use(express.json());
 
 app.use('/backend/auth', authRoutes);
+app.use('/backend/enduser', endUserRoutes);
 
 app.listen(process.env.PORT, () =>{
     console.log(`Backend sever connected in port ${process.env.PORT}`);
